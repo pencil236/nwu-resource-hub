@@ -1,0 +1,111 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: campus
+      POSTGRES_USER: campus
+      POSTGRES_PASSWORD: campus
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: campus
+      MINIO_ROOT_PASSWORD: campus-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+
+  clamav:
+    image: clamav/clamav:stable
+    volumes:
+      - clamav_data:/var/lib/clamav
+
+  api:
+    build: .
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+    ports:
+      - "8000:8000"
+    volumes:
+      - model_cache:/root/.cache
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  worker:
+    build: .
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
+    command: celery -A app.worker.celery_app worker --loglevel=INFO --concurrency=2
+    environment:
+      CLAMAV_HOST: clamav
+    volumes:
+      - model_cache:/root/.cache
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      clamav:
+        condition: service_started
+
+  beat:
+    build: .
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
+    command: celery -A app.worker.celery_app beat --loglevel=INFO
+    depends_on:
+      - worker
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  clamav_data:
+  model_cache:
