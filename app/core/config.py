@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     secret_key: str = "development-only-secret-change-me"
     database_url: str = "sqlite:///./data/campus.db"
     redis_url: str = "redis://localhost:6379/0"
-    allowed_email_domains: Annotated[list[str], NoDecode] = ["example.edu.cn"]
+    allowed_email_domains: Annotated[list[str], NoDecode] = [
+        "stumail.nwu.edu.cn",
+        "nwu.edu.cn",
+    ]
     admin_emails: Annotated[list[str], NoDecode] = []
     access_token_minutes: int = 15
     refresh_token_days: int = 7
@@ -30,7 +33,7 @@ class Settings(BaseSettings):
     minio_secure: bool = False
     smtp_host: str | None = None
     smtp_port: int = 1025
-    smtp_from: str = "campus-share@example.edu.cn"
+    smtp_from: str = "campus-share@nwu.edu.cn"
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"

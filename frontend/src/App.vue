@@ -34,8 +34,13 @@ const statusLabels: Record<Resource['status'], string> = {
 const shownResources = computed(() => results.value.length ? results.value.map(item => item.resource) : resources.value)
 
 async function requestCode() {
-  await api.post('/auth/register-code', { email: email.value })
-  ElMessage.success('验证码已发送；开发模式请查看 API 日志或 Mailpit')
+  if (!email.value.trim()) return ElMessage.warning('请先填写校内邮箱')
+  try {
+    await api.post('/auth/register-code', { email: email.value })
+    ElMessage.success('验证码已发送；开发模式请查看 API 日志或 Mailpit')
+  } catch (error: any) {
+    showError(error)
+  }
 }
 
 async function authenticate() {
