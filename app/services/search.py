@@ -3,7 +3,7 @@ import math
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Resource, ResourceChunk, ResourceStatus
+from app.models import Resource, ResourceChunk, ResourceLike, ResourceStatus
 from app.schemas import ResourceView, SearchResult
 from app.services.embeddings import embed_texts
 
@@ -21,6 +21,7 @@ def search_resources(
     category: str | None = None,
     file_type: str | None = None,
     limit: int = 10,
+    viewer_id: str | None = None,
 ) -> list[SearchResult]:
     base_filters = [Resource.status == ResourceStatus.PUBLISHED]
     if course:
@@ -88,11 +89,23 @@ def search_resources(
     if not resource_ids:
         return []
     resources = db.scalars(select(Resource).where(Resource.id.in_(resource_ids))).all()
+    liked_ids: set[str] = set()
+    if viewer_id:
+        liked_ids = set(
+            db.scalars(
+                select(ResourceLike.resource_id).where(
+                    ResourceLike.user_id == viewer_id,
+                    ResourceLike.resource_id.in_(resource_ids),
+                )
+            ).all()
+        )
     keyword_ids = {resource.id for resource in keyword_resources}
     chunk_by_resource = {chunk.resource_id: chunk.content[:300] for chunk in semantic_chunks}
     results = [
         SearchResult(
-            resource=ResourceView.model_validate(resource),
+            resource=ResourceView.model_validate(resource).model_copy(
+                update={"liked_by_me": resource.id in liked_ids}
+            ),
             score=round(
                 (0.45 if resource.id in keyword_ids else 0)
                 + 0.55 * max(0, semantic_scores.get(resource.id, 0)),

@@ -68,7 +68,7 @@ def search(
     db: Session = Depends(get_db),
     _user: User = Depends(current_user),
 ) -> list[SearchResult]:
-    return search_resources(db, q, course, category)
+    return search_resources(db, q, course, category, viewer_id=_user.id)
 
 
 @router.post("/agent/chat", response_model=AgentResponse)
@@ -79,7 +79,7 @@ def agent_chat(
 ) -> AgentResponse:
     enforce_rate_limit(f"agent:{_user.id}", 30, 3600)
     if not get_settings().deepseek_api_key:
-        results = search_resources(db, payload.message, limit=8)
+        results = search_resources(db, payload.message, limit=8, viewer_id=_user.id)
         context = _results_context(results)
         return AgentResponse(
             answer=deepseek_client.answer_with_context(payload.message, context),
@@ -119,6 +119,7 @@ def agent_chat(
                         arguments.category,
                         arguments.file_type,
                         limit=8,
+                        viewer_id=_user.id,
                     )
                     for item in results:
                         collected[item.resource.id] = item

@@ -67,12 +67,34 @@ class ResourceView(BaseModel):
     ai_purpose: str | None
     ai_audience: str | None
     failure_reason: str | None
+    like_count: int = 0
+    comment_count: int = 0
+    liked_by_me: bool = False
     created_at: datetime
 
 
 class DownloadTicket(BaseModel):
     url: str
     expires_in: int = 300
+
+
+class EngagementView(BaseModel):
+    liked_by_me: bool
+    like_count: int
+    comment_count: int
+
+
+class CommentCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=1000)
+
+
+class CommentView(BaseModel):
+    id: int
+    resource_id: str
+    author_id: str
+    author_name: str
+    content: str
+    created_at: datetime
 
 
 class SearchResult(BaseModel):

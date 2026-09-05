@@ -3,7 +3,7 @@ import uuid
 from datetime import UTC, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -46,6 +46,12 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     resources: Mapped[list["Resource"]] = relationship(back_populates="owner")
+    resource_likes: Mapped[list["ResourceLike"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    resource_comments: Mapped[list["ResourceComment"]] = relationship(
+        back_populates="author", cascade="all, delete-orphan"
+    )
 
 
 class EmailCode(Base):
@@ -93,6 +99,8 @@ class Resource(Base):
     ai_purpose: Mapped[str | None] = mapped_column(Text)
     ai_audience: Mapped[str | None] = mapped_column(Text)
     failure_reason: Mapped[str | None] = mapped_column(Text)
+    like_count: Mapped[int] = mapped_column(Integer, default=0)
+    comment_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -102,6 +110,42 @@ class Resource(Base):
     chunks: Mapped[list["ResourceChunk"]] = relationship(
         back_populates="resource", cascade="all, delete-orphan"
     )
+    likes: Mapped[list["ResourceLike"]] = relationship(
+        back_populates="resource", cascade="all, delete-orphan"
+    )
+    comments: Mapped[list["ResourceComment"]] = relationship(
+        back_populates="resource", cascade="all, delete-orphan"
+    )
+
+
+class ResourceLike(Base):
+    __tablename__ = "resource_likes"
+    __table_args__ = (UniqueConstraint("resource_id", "user_id", name="uq_resource_like"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    resource_id: Mapped[str] = mapped_column(
+        ForeignKey("resources.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    resource: Mapped[Resource] = relationship(back_populates="likes")
+    user: Mapped[User] = relationship(back_populates="resource_likes")
+
+
+class ResourceComment(Base):
+    __tablename__ = "resource_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    resource_id: Mapped[str] = mapped_column(
+        ForeignKey("resources.id", ondelete="CASCADE"), index=True
+    )
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    resource: Mapped[Resource] = relationship(back_populates="comments")
+    author: Mapped[User] = relationship(back_populates="resource_comments")
 
 
 class ResourceChunk(Base):

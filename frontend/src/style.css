@@ -42,6 +42,18 @@ blockquote { margin: 16px 0; padding-left: 12px; color: #766655; border-left: 2p
 .card-actions { display: flex; justify-content: space-between; gap: 12px; }
 .card-actions .report-button { color: #85807a; font-weight: 400; }
 .failure-reason { color: #b42318 !important; font-size: 13px; }
+.engagement-actions { display: flex; gap: 18px; margin: 14px 0; padding-top: 12px; border-top: 1px solid #e2ded4; }
+.engagement-actions button { padding: 0; border: 0; color: #6b746f; background: none; cursor: pointer; }
+.engagement-actions button.liked { color: #c45145; font-weight: 700; }
+.comment-list { max-height: 430px; overflow-y: auto; }
+.comment-item { position: relative; padding: 14px 4px; border-bottom: 1px solid #ebe7dd; }
+.comment-item > div { display: flex; align-items: center; gap: 12px; }
+.comment-item small { color: #8a918d; }
+.comment-item p { margin: 8px 40px 0 0; line-height: 1.6; white-space: pre-wrap; }
+.comment-item > button { position: absolute; right: 4px; top: 14px; border: 0; color: #a35e4a; background: none; cursor: pointer; }
+.comment-empty { padding: 40px 0; color: #858b87; text-align: center; }
+.comment-editor { display: grid; gap: 12px; margin-top: 20px; }
+.comment-editor .el-button { justify-self: end; }
 .report-list { display: grid; gap: 12px; }
 .report-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 24px; border: 1px solid #d9d5ca; border-radius: 10px; background: #fbfaf6; }
 .report-row p { margin: 8px 0; color: #526159; }

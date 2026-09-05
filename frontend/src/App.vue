@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { api, type Report, type Resource, type SearchResult, type User } from './api'
+import { api, type Engagement, type Report, type Resource, type ResourceComment, type SearchResult, type User } from './api'
 
 const token = ref(localStorage.getItem('access_token'))
 const user = ref<User>()
@@ -19,6 +19,10 @@ const uploadOpen = ref(false)
 const showMine = ref(false)
 const adminOpen = ref(false)
 const reports = ref<Report[]>([])
+const comments = ref<ResourceComment[]>([])
+const commentResource = ref<Resource>()
+const commentContent = ref('')
+const commentsOpen = ref(false)
 const file = ref<File>()
 const copyrightConfirmed = ref(false)
 const form = ref({ title: '', description: '', experience: '', course: '', category: '', tags: '' })
@@ -138,6 +142,49 @@ async function confirm(item: Resource) {
   } catch (error: any) { showError(error) }
 }
 
+async function toggleLike(item: Resource) {
+  try {
+    const { data } = await api.request<Engagement>({
+      url: `/resources/${item.id}/likes`,
+      method: item.liked_by_me ? 'delete' : 'post',
+    })
+    item.liked_by_me = data.liked_by_me
+    item.like_count = data.like_count
+  } catch (error: any) { showError(error) }
+}
+
+async function openComments(item: Resource) {
+  try {
+    commentResource.value = item
+    const { data } = await api.get<ResourceComment[]>(`/resources/${item.id}/comments`)
+    comments.value = data
+    commentContent.value = ''
+    commentsOpen.value = true
+  } catch (error: any) { showError(error) }
+}
+
+async function submitComment() {
+  const resource = commentResource.value
+  const content = commentContent.value.trim()
+  if (!resource || !content) return ElMessage.warning('请输入评论内容')
+  try {
+    const { data } = await api.post<ResourceComment>(`/resources/${resource.id}/comments`, { content })
+    comments.value.push(data)
+    resource.comment_count += 1
+    commentContent.value = ''
+  } catch (error: any) { showError(error) }
+}
+
+async function deleteComment(item: ResourceComment) {
+  const resource = commentResource.value
+  if (!resource) return
+  try {
+    await api.delete(`/resources/${resource.id}/comments/${item.id}`)
+    comments.value = comments.value.filter(comment => comment.id !== item.id)
+    resource.comment_count = Math.max(0, resource.comment_count - 1)
+  } catch (error: any) { showError(error) }
+}
+
 async function download(item: Resource) {
   const { data } = await api.post(`/resources/${item.id}/download-ticket`)
   window.location.href = data.url
@@ -227,6 +274,10 @@ onMounted(async () => { if (token.value) { await loadMe(); await loadResources()
           <div class="tags"><span v-for="tag in item.tags.split(',').filter(Boolean)" :key="tag">{{ tag }}</span></div>
           <blockquote v-if="item.experience">“{{ item.experience }}”</blockquote>
           <p v-if="item.status === 'failed' && item.failure_reason" class="failure-reason">失败原因：{{ item.failure_reason }}</p>
+          <div v-if="item.status === 'published'" class="engagement-actions">
+            <button :class="{ liked: item.liked_by_me }" @click="toggleLike(item)">♥ {{ item.like_count }}</button>
+            <button @click="openComments(item)">评论 {{ item.comment_count }}</button>
+          </div>
           <div class="card-actions">
             <button v-if="item.status === 'waiting_confirmation'" @click="confirm(item)">确认发布</button>
             <span v-else-if="item.status !== 'published'">{{ statusLabels[item.status] }}</span>
@@ -259,5 +310,23 @@ onMounted(async () => { if (token.value) { await loadMe(); await loadResources()
       <el-checkbox v-model="copyrightConfirmed">我确认拥有分享权限，且资料不包含违法、侵权或敏感内容</el-checkbox>
     </el-form>
     <template #footer><el-button @click="uploadOpen = false">取消</el-button><el-button type="primary" :loading="loading" @click="upload">上传并解析</el-button></template>
+  </el-dialog>
+
+  <el-dialog v-model="commentsOpen" :title="`评论 · ${commentResource?.title || ''}`" width="min(620px, 92vw)">
+    <div class="comment-list">
+      <article v-for="item in comments" :key="item.id" class="comment-item">
+        <div>
+          <strong>{{ item.author_name }}</strong>
+          <small>{{ new Date(item.created_at).toLocaleString() }}</small>
+        </div>
+        <p>{{ item.content }}</p>
+        <button v-if="item.author_id === user?.id || user?.is_admin" @click="deleteComment(item)">删除</button>
+      </article>
+      <div v-if="!comments.length" class="comment-empty">还没有评论，来说说这份资料怎么样吧。</div>
+    </div>
+    <div class="comment-editor">
+      <el-input v-model="commentContent" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="写下你的使用感受或补充建议" />
+      <el-button type="primary" @click="submitComment">发表评论</el-button>
+    </div>
   </el-dialog>
 </template>

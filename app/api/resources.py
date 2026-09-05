@@ -14,8 +14,22 @@ from app.api.deps import current_user
 from app.core.config import get_settings
 from app.core.security import create_token, decode_token
 from app.db import get_db
-from app.models import ProcessingJob, Resource, ResourceStatus, User
-from app.schemas import DownloadTicket, ResourceUpdate, ResourceView
+from app.models import (
+    ProcessingJob,
+    Resource,
+    ResourceComment,
+    ResourceLike,
+    ResourceStatus,
+    User,
+)
+from app.schemas import (
+    CommentCreate,
+    CommentView,
+    DownloadTicket,
+    EngagementView,
+    ResourceUpdate,
+    ResourceView,
+)
 from app.services.audit import add_audit
 from app.services.rate_limit import enforce_rate_limit
 from app.services.storage import get_storage
@@ -60,18 +74,47 @@ def _get_visible_resource(db: Session, resource_id: str, user: User) -> Resource
     return resource
 
 
+def _get_published_resource(db: Session, resource_id: str) -> Resource:
+    resource = db.get(Resource, resource_id)
+    if resource is None or resource.status != ResourceStatus.PUBLISHED:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "资源不存在")
+    return resource
+
+
+def _resource_views(
+    db: Session, resources: list[Resource], user_id: str
+) -> list[ResourceView]:
+    if not resources:
+        return []
+    resource_ids = [resource.id for resource in resources]
+    liked_ids = set(
+        db.scalars(
+            select(ResourceLike.resource_id).where(
+                ResourceLike.user_id == user_id,
+                ResourceLike.resource_id.in_(resource_ids),
+            )
+        ).all()
+    )
+    return [
+        ResourceView.model_validate(resource).model_copy(
+            update={"liked_by_me": resource.id in liked_ids}
+        )
+        for resource in resources
+    ]
+
+
 @router.get("", response_model=list[ResourceView])
 def list_resources(
     mine: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
-) -> list[Resource]:
+) -> list[ResourceView]:
     stmt = select(Resource).order_by(Resource.created_at.desc()).limit(100)
     if mine:
         stmt = stmt.where(Resource.owner_id == user.id)
     else:
         stmt = stmt.where(Resource.status == ResourceStatus.PUBLISHED)
-    return list(db.scalars(stmt).all())
+    return _resource_views(db, list(db.scalars(stmt).all()), user.id)
 
 
 @router.post("", response_model=ResourceView, status_code=201)
@@ -162,8 +205,9 @@ def get_resource(
     resource_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
-) -> Resource:
-    return _get_visible_resource(db, resource_id, user)
+) -> ResourceView:
+    resource = _get_visible_resource(db, resource_id, user)
+    return _resource_views(db, [resource], user.id)[0]
 
 
 @router.patch("/{resource_id}", response_model=ResourceView)
@@ -234,6 +278,136 @@ def create_download_ticket(
         token = create_token(f"{user.id}:{resource.id}", "download", timedelta(minutes=5))
         url = f"/api/resources/download/{token}"
     return DownloadTicket(url=url)
+
+
+@router.post("/{resource_id}/likes", response_model=EngagementView)
+def like_resource(
+    resource_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+) -> EngagementView:
+    resource = _get_published_resource(db, resource_id)
+    existing = db.scalar(
+        select(ResourceLike).where(
+            ResourceLike.resource_id == resource.id,
+            ResourceLike.user_id == user.id,
+        )
+    )
+    if existing is None:
+        db.add(ResourceLike(resource_id=resource.id, user_id=user.id))
+        resource.like_count += 1
+        add_audit(db, "resource.like", "resource", resource.id, user.id)
+        db.commit()
+    return EngagementView(
+        liked_by_me=True,
+        like_count=resource.like_count,
+        comment_count=resource.comment_count,
+    )
+
+
+@router.delete("/{resource_id}/likes", response_model=EngagementView)
+def unlike_resource(
+    resource_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+) -> EngagementView:
+    resource = _get_published_resource(db, resource_id)
+    existing = db.scalar(
+        select(ResourceLike).where(
+            ResourceLike.resource_id == resource.id,
+            ResourceLike.user_id == user.id,
+        )
+    )
+    if existing is not None:
+        db.delete(existing)
+        resource.like_count = max(0, resource.like_count - 1)
+        add_audit(db, "resource.unlike", "resource", resource.id, user.id)
+        db.commit()
+    return EngagementView(
+        liked_by_me=False,
+        like_count=resource.like_count,
+        comment_count=resource.comment_count,
+    )
+
+
+@router.get("/{resource_id}/comments", response_model=list[CommentView])
+def list_comments(
+    resource_id: str,
+    db: Session = Depends(get_db),
+    _user: User = Depends(current_user),
+) -> list[CommentView]:
+    _get_published_resource(db, resource_id)
+    rows = db.execute(
+        select(ResourceComment, User.display_name)
+        .join(User, User.id == ResourceComment.author_id)
+        .where(ResourceComment.resource_id == resource_id)
+        .order_by(ResourceComment.created_at.asc())
+        .limit(100)
+    ).all()
+    return [
+        CommentView(
+            id=comment.id,
+            resource_id=comment.resource_id,
+            author_id=comment.author_id,
+            author_name=author_name,
+            content=comment.content,
+            created_at=comment.created_at,
+        )
+        for comment, author_name in rows
+    ]
+
+
+@router.post("/{resource_id}/comments", response_model=CommentView, status_code=201)
+def create_comment(
+    resource_id: str,
+    payload: CommentCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+) -> CommentView:
+    enforce_rate_limit(f"comment:{user.id}", 30, 3600)
+    resource = _get_published_resource(db, resource_id)
+    content = payload.content.strip()
+    if not content:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "评论内容不能为空")
+    comment = ResourceComment(resource_id=resource.id, author_id=user.id, content=content)
+    db.add(comment)
+    resource.comment_count += 1
+    db.flush()
+    add_audit(db, "comment.create", "comment", str(comment.id), user.id)
+    db.commit()
+    db.refresh(comment)
+    return CommentView(
+        id=comment.id,
+        resource_id=comment.resource_id,
+        author_id=comment.author_id,
+        author_name=user.display_name,
+        content=comment.content,
+        created_at=comment.created_at,
+    )
+
+
+@router.delete("/{resource_id}/comments/{comment_id}", status_code=204)
+def delete_comment(
+    resource_id: str,
+    comment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+) -> None:
+    resource = _get_published_resource(db, resource_id)
+    comment = db.scalar(
+        select(ResourceComment).where(
+            ResourceComment.id == comment_id,
+            ResourceComment.resource_id == resource.id,
+        )
+    )
+    if comment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "评论不存在")
+    if comment.author_id != user.id and not user.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权删除该评论")
+    db.delete(comment)
+    resource.comment_count = max(0, resource.comment_count - 1)
+    add_audit(db, "comment.delete", "comment", str(comment.id), user.id)
+    db.commit()
 
 
 @router.get("/download/{token}")

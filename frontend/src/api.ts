@@ -43,6 +43,24 @@ export interface Resource {
   ai_purpose?: string
   ai_audience?: string
   failure_reason?: string
+  like_count: number
+  comment_count: number
+  liked_by_me: boolean
+}
+
+export interface ResourceComment {
+  id: number
+  resource_id: string
+  author_id: string
+  author_name: string
+  content: string
+  created_at: string
+}
+
+export interface Engagement {
+  liked_by_me: boolean
+  like_count: number
+  comment_count: number
 }
 
 export interface User {
