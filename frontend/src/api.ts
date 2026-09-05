@@ -36,6 +36,14 @@ export interface Resource {
   experience: string
   course?: string
   category?: string
+  resource_type: string
+  college: string
+  major: string
+  teacher: string
+  grade: string
+  year?: number
+  is_anonymous: boolean
+  owner_name: string
   tags: string
   original_filename: string
   content_type: string
@@ -46,8 +54,11 @@ export interface Resource {
   ai_audience?: string
   failure_reason?: string
   like_count: number
+  dislike_count: number
   comment_count: number
   liked_by_me: boolean
+  disliked_by_me: boolean
+  created_at: string
 }
 
 export interface ResourceComment {
@@ -61,7 +72,9 @@ export interface ResourceComment {
 
 export interface Engagement {
   liked_by_me: boolean
+  disliked_by_me: boolean
   like_count: number
+  dislike_count: number
   comment_count: number
 }
 
@@ -70,6 +83,28 @@ export interface User {
   email: string
   display_name: string
   is_admin: boolean
+  onboarding_completed: boolean
+}
+
+export interface UserProfile {
+  id: string
+  display_name: string
+  resource_count: number
+  total_likes: number
+}
+
+export interface HelpRequest {
+  id: number
+  author_id: string
+  author_name: string
+  title: string
+  description: string
+  college: string
+  major: string
+  course: string
+  heat_count: number
+  supported_by_me: boolean
+  created_at: string
 }
 
 export interface Report {

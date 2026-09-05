@@ -33,7 +33,11 @@ def test_rejects_spoofed_file_signature_with_stable_error(client):
     response = client.post(
         "/api/resources",
         headers=auth_headers(tokens),
-        data={"title": "伪造文件", "rights_confirmed": "true"},
+        data={
+            "title": "伪造文件",
+            "resource_type": "其他",
+            "rights_confirmed": "true",
+        },
         files={"file": ("fake.pdf", b"not a pdf", "application/pdf")},
     )
     assert response.status_code == 400

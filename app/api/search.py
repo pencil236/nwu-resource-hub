@@ -65,10 +65,30 @@ def search(
     q: str = Query(min_length=1, max_length=300),
     course: str | None = None,
     category: str | None = None,
+    resource_type: str | None = None,
+    college: str | None = None,
+    major: str | None = None,
+    teacher: str | None = None,
+    grade: str | None = None,
+    year: int | None = None,
+    sort_by: str = "relevance",
     db: Session = Depends(get_db),
     _user: User = Depends(current_user),
 ) -> list[SearchResult]:
-    return search_resources(db, q, course, category, viewer_id=_user.id)
+    return search_resources(
+        db,
+        q,
+        course,
+        category,
+        viewer_id=_user.id,
+        resource_type=resource_type,
+        college=college,
+        major=major,
+        teacher=teacher,
+        grade=grade,
+        year=year,
+        sort_by=sort_by,
+    )
 
 
 @router.post("/agent/chat", response_model=AgentResponse)

@@ -46,6 +46,7 @@ def test_upload_confirm_search_and_download(client):
         headers=headers,
         data={
             "title": "高数期末重点笔记",
+            "resource_type": "个人笔记",
             "description": "期末复习提纲",
             "experience": "考前一周配合课后题使用",
             "course": "高等数学",

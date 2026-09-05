@@ -21,8 +21,10 @@ class Settings(BaseSettings):
     admin_emails: Annotated[list[str], NoDecode] = []
     access_token_minutes: int = 15
     refresh_token_days: int = 7
-    max_upload_mb: int = 50
+    max_upload_mb: int = 200
+    ai_parse_max_mb: int = 50
     user_storage_quota_mb: int = 500
+    auto_hide_report_threshold: int = 3
     storage_backend: str = "local"
     local_storage_path: Path = Path("./data/uploads")
     minio_endpoint: str = "localhost:9000"

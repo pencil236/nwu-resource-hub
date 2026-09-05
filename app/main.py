@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from redis import Redis
 from sqlalchemy import text
 
-from app.api import admin, auth, reports, resources, search
+from app.api import admin, auth, reports, resource_requests, resources, search, users
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db import Base, engine
@@ -44,6 +44,8 @@ app.include_router(resources.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
+app.include_router(resource_requests.router, prefix="/api")
 
 logger = logging.getLogger("campus_share.requests")
 

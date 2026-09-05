@@ -50,6 +50,22 @@ def process_resource_now(resource_id: str) -> None:
                 job.started_at = utcnow()
                 db.commit()
             scan_bytes(data)
+            if resource.size_bytes > settings.ai_parse_max_mb * 1024 * 1024:
+                resource.ai_summary = "文件较大，已跳过 AI 内容解析，请结合上传者说明预览使用。"
+                resource.ai_purpose = resource.description or resource.experience
+                resource.ai_audience = "请由上传者补充适用人群"
+                resource.status = ResourceStatus.WAITING_CONFIRMATION
+                resource.failure_reason = None
+                if job:
+                    job.status = JobStatus.SUCCEEDED
+                    job.finished_at = utcnow()
+                    job.error = None
+                db.commit()
+                logger.info(
+                    "Skipped AI parsing for large resource",
+                    extra={"resource_id": resource_id, "size_bytes": resource.size_bytes},
+                )
+                return
             text = extract_text(resource.original_filename, data)
             chunks = chunk_text(text)
             if not chunks:

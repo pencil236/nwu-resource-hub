@@ -43,6 +43,7 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(80))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     resources: Mapped[list["Resource"]] = relationship(back_populates="owner")
@@ -86,6 +87,13 @@ class Resource(Base):
     experience: Mapped[str] = mapped_column(Text, default="")
     course: Mapped[str | None] = mapped_column(String(120), index=True)
     category: Mapped[str | None] = mapped_column(String(80), index=True)
+    resource_type: Mapped[str] = mapped_column(String(40), default="其他", index=True)
+    college: Mapped[str] = mapped_column(String(100), default="通用", index=True)
+    major: Mapped[str] = mapped_column(String(100), default="通用", index=True)
+    teacher: Mapped[str] = mapped_column(String(100), default="通用", index=True)
+    grade: Mapped[str] = mapped_column(String(40), default="通用", index=True)
+    year: Mapped[int | None] = mapped_column(Integer, index=True)
+    is_anonymous: Mapped[bool] = mapped_column(Boolean, default=False)
     tags: Mapped[str] = mapped_column(String(500), default="")
     original_filename: Mapped[str] = mapped_column(String(255))
     content_type: Mapped[str] = mapped_column(String(100))
@@ -100,7 +108,9 @@ class Resource(Base):
     ai_audience: Mapped[str | None] = mapped_column(Text)
     failure_reason: Mapped[str | None] = mapped_column(Text)
     like_count: Mapped[int] = mapped_column(Integer, default=0)
+    dislike_count: Mapped[int] = mapped_column(Integer, default=0)
     comment_count: Mapped[int] = mapped_column(Integer, default=0)
+    report_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -111,6 +121,9 @@ class Resource(Base):
         back_populates="resource", cascade="all, delete-orphan"
     )
     likes: Mapped[list["ResourceLike"]] = relationship(
+        back_populates="resource", cascade="all, delete-orphan"
+    )
+    dislikes: Mapped[list["ResourceDislike"]] = relationship(
         back_populates="resource", cascade="all, delete-orphan"
     )
     comments: Mapped[list["ResourceComment"]] = relationship(
@@ -131,6 +144,48 @@ class ResourceLike(Base):
 
     resource: Mapped[Resource] = relationship(back_populates="likes")
     user: Mapped[User] = relationship(back_populates="resource_likes")
+
+
+class ResourceDislike(Base):
+    __tablename__ = "resource_dislikes"
+    __table_args__ = (UniqueConstraint("resource_id", "user_id", name="uq_resource_dislike"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    resource_id: Mapped[str] = mapped_column(
+        ForeignKey("resources.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    resource: Mapped[Resource] = relationship(back_populates="dislikes")
+
+
+class ResourceHelp(Base):
+    __tablename__ = "resource_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    college: Mapped[str] = mapped_column(String(100), default="通用", index=True)
+    major: Mapped[str] = mapped_column(String(100), default="通用", index=True)
+    course: Mapped[str] = mapped_column(String(120), default="通用", index=True)
+    heat_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ResourceHelpSupport(Base):
+    __tablename__ = "resource_request_supports"
+    __table_args__ = (
+        UniqueConstraint("request_id", "user_id", name="uq_resource_request_support"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[int] = mapped_column(
+        ForeignKey("resource_requests.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class ResourceComment(Base):

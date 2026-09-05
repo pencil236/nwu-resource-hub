@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
@@ -19,6 +19,7 @@ from app.models import (
     Resource,
     ResourceChunk,
     ResourceComment,
+    ResourceDislike,
     ResourceLike,
     ResourceStatus,
     User,
@@ -49,6 +50,7 @@ ALLOWED_CONTENT_TYPES = {
     "image/png",
     "image/jpeg",
 }
+RESOURCE_TYPES = {"电子课本", "课堂课件", "个人笔记", "经验分享", "其他"}
 
 
 def _has_valid_signature(suffix: str, data: bytes) -> bool:
@@ -97,9 +99,23 @@ def _resource_views(
             )
         ).all()
     )
+    disliked_ids = set(
+        db.scalars(
+            select(ResourceDislike.resource_id).where(
+                ResourceDislike.user_id == user_id,
+                ResourceDislike.resource_id.in_(resource_ids),
+            )
+        ).all()
+    )
     return [
         ResourceView.model_validate(resource).model_copy(
-            update={"liked_by_me": resource.id in liked_ids}
+            update={
+                "liked_by_me": resource.id in liked_ids,
+                "disliked_by_me": resource.id in disliked_ids,
+                "owner_name": "匿名同学"
+                if resource.is_anonymous
+                else resource.owner.display_name,
+            }
         )
         for resource in resources
     ]
@@ -108,23 +124,69 @@ def _resource_views(
 @router.get("", response_model=list[ResourceView])
 def list_resources(
     mine: bool = False,
+    owner_id: str | None = None,
+    q: str | None = None,
+    resource_type: str | None = None,
+    college: str | None = None,
+    major: str | None = None,
+    course: str | None = None,
+    teacher: str | None = None,
+    grade: str | None = None,
+    year: int | None = None,
+    sort_by: str = "newest",
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ) -> list[ResourceView]:
-    stmt = select(Resource).order_by(Resource.created_at.desc()).limit(100)
+    stmt = select(Resource)
     if mine:
         stmt = stmt.where(Resource.owner_id == user.id)
     else:
         stmt = stmt.where(Resource.status == ResourceStatus.PUBLISHED)
+        if owner_id:
+            stmt = stmt.where(Resource.owner_id == owner_id, Resource.is_anonymous.is_(False))
+    filters = {
+        Resource.resource_type: resource_type,
+        Resource.college: college,
+        Resource.major: major,
+        Resource.course: course,
+        Resource.teacher: teacher,
+        Resource.grade: grade,
+    }
+    for column, value in filters.items():
+        if value:
+            stmt = stmt.where(column.ilike(f"%{value}%"))
+    if year:
+        stmt = stmt.where(Resource.year == year)
+    if q:
+        stmt = stmt.where(
+            or_(
+                Resource.title.ilike(f"%{q}%"),
+                Resource.description.ilike(f"%{q}%"),
+                Resource.experience.ilike(f"%{q}%"),
+                Resource.tags.ilike(f"%{q}%"),
+            )
+        )
+    if sort_by == "likes":
+        stmt = stmt.order_by(Resource.like_count.desc(), Resource.created_at.desc())
+    else:
+        stmt = stmt.order_by(Resource.created_at.desc())
+    stmt = stmt.limit(100)
     return _resource_views(db, list(db.scalars(stmt).all()), user.id)
 
 
 @router.post("", response_model=ResourceView, status_code=201)
 async def upload_resource(
     title: str = Form(min_length=1, max_length=200),
+    resource_type: str = Form(max_length=40),
     description: str = Form(default="", max_length=3000),
     experience: str = Form(default="", max_length=3000),
-    course: str | None = Form(default=None, max_length=120),
+    college: str = Form(default="通用", max_length=100),
+    major: str = Form(default="通用", max_length=100),
+    course: str = Form(default="通用", max_length=120),
+    teacher: str = Form(default="通用", max_length=100),
+    grade: str = Form(default="通用", max_length=40),
+    year: int | None = Form(default=None, ge=1900, le=2200),
+    is_anonymous: bool = Form(default=False),
     category: str | None = Form(default=None, max_length=80),
     tags: str = Form(default="", max_length=500),
     rights_confirmed: bool = Form(),
@@ -135,6 +197,8 @@ async def upload_resource(
     enforce_rate_limit(f"upload:{user.id}", 20, 3600)
     if not rights_confirmed:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "必须确认拥有资源分享权限")
+    if resource_type not in RESOURCE_TYPES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "资源类型不正确")
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_SUFFIXES or file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "不支持的文件格式")
@@ -164,7 +228,14 @@ async def upload_resource(
         title=title,
         description=description,
         experience=experience,
-        course=course,
+        resource_type=resource_type,
+        college=college.strip() or "通用",
+        major=major.strip() or "通用",
+        course=course.strip() or "通用",
+        teacher=teacher.strip() or "通用",
+        grade=grade.strip() or "通用",
+        year=year,
+        is_anonymous=is_anonymous,
         category=category,
         tags=tags,
         original_filename=Path(file.filename or "resource").name,
@@ -341,13 +412,24 @@ def like_resource(
         )
     )
     if existing is None:
+        previous_dislike = db.scalar(
+            select(ResourceDislike).where(
+                ResourceDislike.resource_id == resource.id,
+                ResourceDislike.user_id == user.id,
+            )
+        )
+        if previous_dislike is not None:
+            db.delete(previous_dislike)
+            resource.dislike_count = max(0, resource.dislike_count - 1)
         db.add(ResourceLike(resource_id=resource.id, user_id=user.id))
         resource.like_count += 1
         add_audit(db, "resource.like", "resource", resource.id, user.id)
         db.commit()
     return EngagementView(
         liked_by_me=True,
+        disliked_by_me=False,
         like_count=resource.like_count,
+        dislike_count=resource.dislike_count,
         comment_count=resource.comment_count,
     )
 
@@ -372,7 +454,72 @@ def unlike_resource(
         db.commit()
     return EngagementView(
         liked_by_me=False,
+        disliked_by_me=False,
         like_count=resource.like_count,
+        dislike_count=resource.dislike_count,
+        comment_count=resource.comment_count,
+    )
+
+
+@router.post("/{resource_id}/dislikes", response_model=EngagementView)
+def dislike_resource(
+    resource_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+) -> EngagementView:
+    resource = _get_published_resource(db, resource_id)
+    existing = db.scalar(
+        select(ResourceDislike).where(
+            ResourceDislike.resource_id == resource.id,
+            ResourceDislike.user_id == user.id,
+        )
+    )
+    if existing is None:
+        previous_like = db.scalar(
+            select(ResourceLike).where(
+                ResourceLike.resource_id == resource.id,
+                ResourceLike.user_id == user.id,
+            )
+        )
+        if previous_like is not None:
+            db.delete(previous_like)
+            resource.like_count = max(0, resource.like_count - 1)
+        db.add(ResourceDislike(resource_id=resource.id, user_id=user.id))
+        resource.dislike_count += 1
+        add_audit(db, "resource.dislike", "resource", resource.id, user.id)
+        db.commit()
+    return EngagementView(
+        liked_by_me=False,
+        disliked_by_me=True,
+        like_count=resource.like_count,
+        dislike_count=resource.dislike_count,
+        comment_count=resource.comment_count,
+    )
+
+
+@router.delete("/{resource_id}/dislikes", response_model=EngagementView)
+def remove_dislike(
+    resource_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+) -> EngagementView:
+    resource = _get_published_resource(db, resource_id)
+    existing = db.scalar(
+        select(ResourceDislike).where(
+            ResourceDislike.resource_id == resource.id,
+            ResourceDislike.user_id == user.id,
+        )
+    )
+    if existing is not None:
+        db.delete(existing)
+        resource.dislike_count = max(0, resource.dislike_count - 1)
+        add_audit(db, "resource.remove_dislike", "resource", resource.id, user.id)
+        db.commit()
+    return EngagementView(
+        liked_by_me=False,
+        disliked_by_me=False,
+        like_count=resource.like_count,
+        dislike_count=resource.dislike_count,
         comment_count=resource.comment_count,
     )
 

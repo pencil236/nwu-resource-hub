@@ -37,6 +37,14 @@ class UserView(BaseModel):
     email: str
     display_name: str
     is_admin: bool
+    onboarding_completed: bool = False
+
+
+class UserProfileView(BaseModel):
+    id: str
+    display_name: str
+    resource_count: int
+    total_likes: int
 
 
 class ResourceUpdate(BaseModel):
@@ -45,6 +53,13 @@ class ResourceUpdate(BaseModel):
     experience: str | None = Field(default=None, max_length=3000)
     course: str | None = Field(default=None, max_length=120)
     category: str | None = Field(default=None, max_length=80)
+    resource_type: str | None = Field(default=None, max_length=40)
+    college: str | None = Field(default=None, max_length=100)
+    major: str | None = Field(default=None, max_length=100)
+    teacher: str | None = Field(default=None, max_length=100)
+    grade: str | None = Field(default=None, max_length=40)
+    year: int | None = Field(default=None, ge=1900, le=2200)
+    is_anonymous: bool | None = None
     tags: str | None = Field(default=None, max_length=500)
 
 
@@ -57,6 +72,14 @@ class ResourceView(BaseModel):
     experience: str
     course: str | None
     category: str | None
+    resource_type: str = "其他"
+    college: str = "通用"
+    major: str = "通用"
+    teacher: str = "通用"
+    grade: str = "通用"
+    year: int | None = None
+    is_anonymous: bool = False
+    owner_name: str = "匿名同学"
     tags: str
     original_filename: str
     content_type: str
@@ -68,8 +91,10 @@ class ResourceView(BaseModel):
     ai_audience: str | None
     failure_reason: str | None
     like_count: int = 0
+    dislike_count: int = 0
     comment_count: int = 0
     liked_by_me: bool = False
+    disliked_by_me: bool = False
     created_at: datetime
 
 
@@ -80,7 +105,9 @@ class DownloadTicket(BaseModel):
 
 class EngagementView(BaseModel):
     liked_by_me: bool
+    disliked_by_me: bool
     like_count: int
+    dislike_count: int
     comment_count: int
 
 
@@ -100,6 +127,33 @@ class CommentView(BaseModel):
     author_name: str
     content: str
     created_at: datetime
+
+
+class HelpRequestCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    college: str = Field(default="通用", max_length=100)
+    major: str = Field(default="通用", max_length=100)
+    course: str = Field(default="通用", max_length=120)
+
+
+class HelpRequestView(BaseModel):
+    id: int
+    author_id: str
+    author_name: str
+    title: str
+    description: str
+    college: str
+    major: str
+    course: str
+    heat_count: int
+    supported_by_me: bool = False
+    created_at: datetime
+
+
+class HelpEngagementView(BaseModel):
+    supported_by_me: bool
+    heat_count: int
 
 
 class SearchResult(BaseModel):

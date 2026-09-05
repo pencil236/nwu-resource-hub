@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
+from app.core.config import get_settings
 from app.db import get_db
 from app.models import Report, ReportStatus, Resource, ResourceStatus, User
 from app.schemas import ReportCreate, ReportView
@@ -40,6 +41,17 @@ def create_report(
         details=payload.details,
     )
     db.add(report)
+    resource.report_count += 1
+    if resource.report_count >= get_settings().auto_hide_report_threshold:
+        resource.status = ResourceStatus.HIDDEN
+        add_audit(
+            db,
+            "resource.auto_hide",
+            "resource",
+            resource.id,
+            user.id,
+            {"report_count": resource.report_count},
+        )
     db.flush()
     add_audit(db, "report.create", "report", str(report.id), user.id)
     db.commit()

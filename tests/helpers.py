@@ -49,6 +49,7 @@ def upload_docx(client, headers: dict[str, str], title: str = "高数笔记") ->
         headers=headers,
         data={
             "title": title,
+            "resource_type": "个人笔记",
             "course": "高等数学",
             "experience": "适合期末复习",
             "rights_confirmed": "true",
