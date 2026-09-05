@@ -94,10 +94,6 @@ function showError(error: any) {
   ElMessage.error(error.response?.data?.error?.message || error.response?.data?.detail || '操作失败')
 }
 
-function shortUserId(id: string) {
-  return id.slice(0, 8)
-}
-
 async function loadMe() {
   const { data } = await api.get<User>('/auth/me')
   user.value = data
@@ -512,9 +508,7 @@ onMounted(async () => { if (token.value) { await loadMe(); await loadResources()
             <div class="comment-author">
               <span class="avatar">{{ item.author_name.slice(0, 1).toUpperCase() }}</span>
               <strong>{{ item.author_name }}</strong>
-              <span class="comment-meta" :title="`完整用户 ID：${item.author_id}`">
-                ID {{ shortUserId(item.author_id) }} · {{ new Date(item.created_at).toLocaleString() }}
-              </span>
+              <time class="comment-meta">{{ new Date(item.created_at).toLocaleString() }}</time>
             </div>
             <p>{{ item.content }}</p>
             <button v-if="item.author_id === user?.id || user?.is_admin" @click="deleteComment(item)">删除</button>
