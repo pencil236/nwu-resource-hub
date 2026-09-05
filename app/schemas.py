@@ -84,6 +84,11 @@ class EngagementView(BaseModel):
     comment_count: int
 
 
+class PreviewText(BaseModel):
+    text: str
+    truncated: bool
+
+
 class CommentCreate(BaseModel):
     content: str = Field(min_length=1, max_length=1000)
 

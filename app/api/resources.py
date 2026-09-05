@@ -17,6 +17,7 @@ from app.db import get_db
 from app.models import (
     ProcessingJob,
     Resource,
+    ResourceChunk,
     ResourceComment,
     ResourceLike,
     ResourceStatus,
@@ -27,6 +28,7 @@ from app.schemas import (
     CommentView,
     DownloadTicket,
     EngagementView,
+    PreviewText,
     ResourceUpdate,
     ResourceView,
 )
@@ -263,6 +265,51 @@ def download_resource(
             "Content-Disposition": f"attachment; filename*=UTF-8''{quote(resource.original_filename)}"
         },
     )
+
+
+@router.get("/{resource_id}/preview")
+def preview_resource(
+    resource_id: str,
+    db: Session = Depends(get_db),
+    _user: User = Depends(current_user),
+) -> Response:
+    resource = _get_published_resource(db, resource_id)
+    if resource.content_type != "application/pdf" and not resource.content_type.startswith(
+        "image/"
+    ):
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "该格式仅支持文本预览")
+    return Response(
+        get_storage().get(resource.object_key),
+        media_type=resource.content_type,
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(resource.original_filename)}"
+        },
+    )
+
+
+@router.get("/{resource_id}/preview-text", response_model=PreviewText)
+def preview_resource_text(
+    resource_id: str,
+    db: Session = Depends(get_db),
+    _user: User = Depends(current_user),
+) -> PreviewText:
+    resource = _get_published_resource(db, resource_id)
+    contents = list(
+        db.scalars(
+            select(ResourceChunk.content)
+            .where(ResourceChunk.resource_id == resource.id)
+            .order_by(ResourceChunk.position.asc())
+            .limit(42)
+        ).all()
+    )
+    text = "\n\n".join(contents)
+    if not text:
+        text = "\n\n".join(
+            part
+            for part in (resource.ai_summary, resource.description, resource.experience)
+            if part
+        )
+    return PreviewText(text=text[:40000], truncated=len(contents) == 42 or len(text) > 40000)
 
 
 @router.post("/{resource_id}/download-ticket", response_model=DownloadTicket)

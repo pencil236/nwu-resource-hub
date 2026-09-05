@@ -38,6 +38,8 @@ export interface Resource {
   category?: string
   tags: string
   original_filename: string
+  content_type: string
+  size_bytes: number
   status: 'processing' | 'waiting_confirmation' | 'published' | 'failed' | 'hidden'
   ai_summary?: string
   ai_purpose?: string

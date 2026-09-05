@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api, type Engagement, type Report, type Resource, type ResourceComment, type SearchResult, type User } from './api'
 
@@ -23,6 +23,11 @@ const comments = ref<ResourceComment[]>([])
 const commentResource = ref<Resource>()
 const commentContent = ref('')
 const commentsOpen = ref(false)
+const previewKind = ref<'pdf' | 'image' | 'text'>('text')
+const previewUrl = ref('')
+const previewText = ref('')
+const previewTruncated = ref(false)
+const previewLoading = ref(false)
 const file = ref<File>()
 const copyrightConfirmed = ref(false)
 const form = ref({ title: '', description: '', experience: '', course: '', category: '', tags: '' })
@@ -153,14 +158,41 @@ async function toggleLike(item: Resource) {
   } catch (error: any) { showError(error) }
 }
 
-async function openComments(item: Resource) {
+function revokePreviewUrl() {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+  previewUrl.value = ''
+}
+
+async function openResourcePreview(item: Resource) {
+  revokePreviewUrl()
+  commentResource.value = item
+  commentsOpen.value = true
+  previewLoading.value = true
+  previewText.value = ''
+  previewTruncated.value = false
   try {
-    commentResource.value = item
-    const { data } = await api.get<ResourceComment[]>(`/resources/${item.id}/comments`)
-    comments.value = data
+    const commentsRequest = api.get<ResourceComment[]>(`/resources/${item.id}/comments`)
+    if (item.content_type === 'application/pdf' || item.content_type.startsWith('image/')) {
+      const [commentsResponse, previewResponse] = await Promise.all([
+        commentsRequest,
+        api.get(`/resources/${item.id}/preview`, { responseType: 'blob' }),
+      ])
+      comments.value = commentsResponse.data
+      previewKind.value = item.content_type === 'application/pdf' ? 'pdf' : 'image'
+      previewUrl.value = URL.createObjectURL(previewResponse.data)
+    } else {
+      const [commentsResponse, previewResponse] = await Promise.all([
+        commentsRequest,
+        api.get<{ text: string, truncated: boolean }>(`/resources/${item.id}/preview-text`),
+      ])
+      comments.value = commentsResponse.data
+      previewKind.value = 'text'
+      previewText.value = previewResponse.data.text
+      previewTruncated.value = previewResponse.data.truncated
+    }
     commentContent.value = ''
-    commentsOpen.value = true
   } catch (error: any) { showError(error) }
+  finally { previewLoading.value = false }
 }
 
 async function submitComment() {
@@ -220,6 +252,8 @@ async function hideResource(resourceId: string) {
   await loadReports()
 }
 
+watch(commentsOpen, (open) => { if (!open) revokePreviewUrl() })
+onUnmounted(revokePreviewUrl)
 onMounted(async () => { if (token.value) { await loadMe(); await loadResources() } })
 </script>
 
@@ -276,12 +310,12 @@ onMounted(async () => { if (token.value) { await loadMe(); await loadResources()
           <p v-if="item.status === 'failed' && item.failure_reason" class="failure-reason">失败原因：{{ item.failure_reason }}</p>
           <div v-if="item.status === 'published'" class="engagement-actions">
             <button :class="{ liked: item.liked_by_me }" @click="toggleLike(item)">♥ {{ item.like_count }}</button>
-            <button @click="openComments(item)">评论 {{ item.comment_count }}</button>
+            <button @click="openResourcePreview(item)">评论 {{ item.comment_count }}</button>
           </div>
           <div class="card-actions">
             <button v-if="item.status === 'waiting_confirmation'" @click="confirm(item)">确认发布</button>
             <span v-else-if="item.status !== 'published'">{{ statusLabels[item.status] }}</span>
-            <button v-else @click="download(item)">下载资料 →</button>
+            <button v-else @click="openResourcePreview(item)">预览资料 →</button>
             <button v-if="item.status === 'published' && item.owner_id !== user?.id" class="report-button" @click="reportResource(item)">举报</button>
           </div>
         </article>
@@ -312,21 +346,39 @@ onMounted(async () => { if (token.value) { await loadMe(); await loadResources()
     <template #footer><el-button @click="uploadOpen = false">取消</el-button><el-button type="primary" :loading="loading" @click="upload">上传并解析</el-button></template>
   </el-dialog>
 
-  <el-dialog v-model="commentsOpen" :title="`评论 · ${commentResource?.title || ''}`" width="min(620px, 92vw)">
-    <div class="comment-list">
-      <article v-for="item in comments" :key="item.id" class="comment-item">
-        <div>
-          <strong>{{ item.author_name }}</strong>
-          <small>{{ new Date(item.created_at).toLocaleString() }}</small>
+  <el-dialog v-model="commentsOpen" :title="commentResource?.title || '资料预览'" width="min(1180px, 96vw)" top="4vh">
+    <div class="preview-layout">
+      <section class="preview-pane" v-loading="previewLoading">
+        <div class="preview-meta">
+          <span>{{ commentResource?.original_filename }}</span>
+          <small>{{ commentResource ? (commentResource.size_bytes / 1024 / 1024).toFixed(2) : 0 }} MB</small>
         </div>
-        <p>{{ item.content }}</p>
-        <button v-if="item.author_id === user?.id || user?.is_admin" @click="deleteComment(item)">删除</button>
-      </article>
-      <div v-if="!comments.length" class="comment-empty">还没有评论，来说说这份资料怎么样吧。</div>
+        <iframe v-if="!previewLoading && previewKind === 'pdf' && previewUrl" :src="previewUrl" title="PDF 预览" />
+        <img v-else-if="!previewLoading && previewKind === 'image' && previewUrl" :src="previewUrl" alt="资料图片预览" />
+        <div v-else-if="!previewLoading && previewKind === 'text'" class="text-preview">
+          <pre>{{ previewText || '该资料暂未提取到可预览文本。' }}</pre>
+          <small v-if="previewTruncated">预览内容较长，仅展示前 40000 个字符。</small>
+        </div>
+      </section>
+      <aside class="comments-pane">
+        <h3>评论区 <small>{{ commentResource?.comment_count || 0 }}</small></h3>
+        <div class="comment-list">
+          <article v-for="item in comments" :key="item.id" class="comment-item">
+            <div>
+              <strong>{{ item.author_name }}</strong>
+              <small>{{ new Date(item.created_at).toLocaleString() }}</small>
+            </div>
+            <p>{{ item.content }}</p>
+            <button v-if="item.author_id === user?.id || user?.is_admin" @click="deleteComment(item)">删除</button>
+          </article>
+          <div v-if="!comments.length" class="comment-empty">还没有评论，来说说这份资料怎么样吧。</div>
+        </div>
+        <div class="comment-editor">
+          <el-input v-model="commentContent" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="写下你的使用感受或补充建议" />
+          <el-button type="primary" @click="submitComment">发表评论</el-button>
+        </div>
+      </aside>
     </div>
-    <div class="comment-editor">
-      <el-input v-model="commentContent" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="写下你的使用感受或补充建议" />
-      <el-button type="primary" @click="submitComment">发表评论</el-button>
-    </div>
+    <template #footer><el-button @click="commentsOpen = false">关闭</el-button><el-button type="primary" @click="commentResource && download(commentResource)">下载原文件</el-button></template>
   </el-dialog>
 </template>

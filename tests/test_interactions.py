@@ -65,3 +65,17 @@ def test_comments_are_listed_and_protected(client):
     assert deleted.status_code == 204
     resource_view = client.get(f"/api/resources/{resource['id']}", headers=author_headers)
     assert resource_view.json()["comment_count"] == 0
+
+
+def test_office_resource_has_authenticated_text_preview(client):
+    owner = register_user(client, "preview-owner@school.edu.cn")
+    headers = auth_headers(owner)
+    resource = _published_resource(client, headers)
+
+    preview = client.get(f"/api/resources/{resource['id']}/preview-text", headers=headers)
+    assert preview.status_code == 200
+    assert "高等数学" in preview.json()["text"]
+    assert preview.json()["truncated"] is False
+
+    binary_preview = client.get(f"/api/resources/{resource['id']}/preview", headers=headers)
+    assert binary_preview.status_code == 415
