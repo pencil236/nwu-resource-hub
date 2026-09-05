@@ -49,6 +49,13 @@ def test_report_admin_review_and_hide_flow(client):
     published = client.post(f"/api/resources/{resource['id']}/confirm", headers=auth_headers(owner))
     assert published.status_code == 200
 
+    own_report = client.post(
+        "/api/reports",
+        headers=auth_headers(owner),
+        json={"resource_id": resource["id"], "reason": "测试自我举报"},
+    )
+    assert own_report.status_code == 400
+
     report = client.post(
         "/api/reports",
         headers=auth_headers(reporter),

@@ -379,6 +379,11 @@ onMounted(async () => { if (token.value) { await loadMe(); await loadResources()
         </div>
       </aside>
     </div>
-    <template #footer><el-button @click="commentsOpen = false">关闭</el-button><el-button type="primary" @click="commentResource && download(commentResource)">下载原文件</el-button></template>
+    <template #footer>
+      <el-button v-if="commentResource && commentResource.owner_id !== user?.id" type="danger" plain @click="reportResource(commentResource)">举报资源</el-button>
+      <el-button v-else disabled>不能举报自己的资源</el-button>
+      <el-button @click="commentsOpen = false">关闭</el-button>
+      <el-button type="primary" @click="commentResource && download(commentResource)">下载原文件</el-button>
+    </template>
   </el-dialog>
 </template>

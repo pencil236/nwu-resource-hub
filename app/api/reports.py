@@ -22,6 +22,8 @@ def create_report(
     resource = db.get(Resource, payload.resource_id)
     if resource is None or resource.status != ResourceStatus.PUBLISHED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "资源不存在")
+    if resource.owner_id == user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "不能举报自己的资源")
     existing = db.scalar(
         select(Report).where(
             Report.resource_id == resource.id,
