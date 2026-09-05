@@ -42,6 +42,7 @@ export interface Resource {
   ai_summary?: string
   ai_purpose?: string
   ai_audience?: string
+  failure_reason?: string
 }
 
 export interface User {

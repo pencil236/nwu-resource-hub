@@ -40,8 +40,8 @@ uv run uvicorn app.main:app --reload
 
 ```powershell
 cd frontend
-pnpm install
-pnpm dev
+npm ci
+npm run dev
 ```
 
 - 前端：http://localhost:5173
@@ -85,8 +85,8 @@ uv run pytest
 uv run ruff check app tests migrations
 uv run alembic check
 cd frontend
-pnpm typecheck
-pnpm build
+npm run typecheck
+npm run build
 ```
 
 正式上线前还应配置 HTTPS、可信 SMTP、强随机 `SECRET_KEY`、真实校内邮箱域名、备份策略以及内容与版权管理制度。

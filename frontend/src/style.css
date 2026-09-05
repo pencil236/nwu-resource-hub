@@ -41,6 +41,7 @@ blockquote { margin: 16px 0; padding-left: 12px; color: #766655; border-left: 2p
 .card-actions button { padding: 0; border: 0; color: #b85f31; background: none; font-weight: 700; cursor: pointer; }
 .card-actions { display: flex; justify-content: space-between; gap: 12px; }
 .card-actions .report-button { color: #85807a; font-weight: 400; }
+.failure-reason { color: #b42318 !important; font-size: 13px; }
 .report-list { display: grid; gap: 12px; }
 .report-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 24px; border: 1px solid #d9d5ca; border-radius: 10px; background: #fbfaf6; }
 .report-row p { margin: 8px 0; color: #526159; }

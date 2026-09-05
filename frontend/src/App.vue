@@ -23,6 +23,14 @@ const file = ref<File>()
 const copyrightConfirmed = ref(false)
 const form = ref({ title: '', description: '', experience: '', course: '', category: '', tags: '' })
 
+const statusLabels: Record<Resource['status'], string> = {
+  processing: '解析中',
+  waiting_confirmation: '待确认',
+  published: '已发布',
+  failed: '解析失败',
+  hidden: '已下架',
+}
+
 const shownResources = computed(() => results.value.length ? results.value.map(item => item.resource) : resources.value)
 
 async function requestCode() {
@@ -205,7 +213,7 @@ onMounted(async () => { if (token.value) { await loadMe(); await loadResources()
       <div v-if="agentAnswer" class="agent-answer"><strong>拾页助手</strong><p>{{ agentAnswer }}</p></div>
     </section>
     <section v-if="!adminOpen" class="content">
-      <div class="section-title"><div><span class="eyebrow">SHARED BY STUDENTS</span><h2>最新资料</h2></div><span>{{ shownResources.length }} 项结果</span></div>
+      <div class="section-title"><div><span class="eyebrow">SHARED BY STUDENTS</span><h2>{{ showMine ? '我的分享' : '最新资料' }}</h2></div><span>{{ shownResources.length }} 项结果</span></div>
       <div v-loading="loading" class="resource-grid">
         <article v-for="item in shownResources" :key="item.id" class="resource-card">
           <div class="card-top"><span class="file-type">{{ item.original_filename.split('.').pop()?.toUpperCase() }}</span><span>{{ item.course || '通用资料' }}</span></div>
@@ -213,9 +221,10 @@ onMounted(async () => { if (token.value) { await loadMe(); await loadResources()
           <p>{{ item.ai_summary || item.description || '等待上传者补充简介' }}</p>
           <div class="tags"><span v-for="tag in item.tags.split(',').filter(Boolean)" :key="tag">{{ tag }}</span></div>
           <blockquote v-if="item.experience">“{{ item.experience }}”</blockquote>
+          <p v-if="item.status === 'failed' && item.failure_reason" class="failure-reason">失败原因：{{ item.failure_reason }}</p>
           <div class="card-actions">
             <button v-if="item.status === 'waiting_confirmation'" @click="confirm(item)">确认发布</button>
-            <span v-else-if="item.status !== 'published'">{{ item.status }}</span>
+            <span v-else-if="item.status !== 'published'">{{ statusLabels[item.status] }}</span>
             <button v-else @click="download(item)">下载资料 →</button>
             <button v-if="item.status === 'published' && item.owner_id !== user?.id" class="report-button" @click="reportResource(item)">举报</button>
           </div>

@@ -22,7 +22,10 @@ async def lifespan(_app: FastAPI):
     if engine.dialect.name == "postgresql":
         with engine.begin() as connection:
             connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-    Base.metadata.create_all(engine)
+    else:
+        # SQLite is the zero-dependency development/test mode. PostgreSQL
+        # deployments are initialized by Alembic before the API starts.
+        Base.metadata.create_all(engine)
     yield
 
 
